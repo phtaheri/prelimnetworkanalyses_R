@@ -1,0 +1,941 @@
+library("dplyr")
+library("igraph")
+library("tidyverse")
+library("tidyr")
+library("purrr")
+library("combinat")
+library("scales")
+
+setwd("~/Desktop")
+multilong <- read_csv("finaldatasheet.csv")
+
+#get rid of blank columns:
+multilong <- multilong %>%
+  group_by(blank_row = (rowSums(multilong == "") == ncol(multilong))) %>%
+  mutate(blank_row_num = cumsum(blank_row)) %>%
+  filter(!((blank_row_num %% 2 == 1) & blank_row)) %>%
+  ungroup() %>%
+  select(-blank_row, -blank_row_num)
+
+#subset
+multilong_sub <- multilong %>% select(Voc_Code...6, Duration_sec,
+                                      HandDur)
+#turn into factor
+df <- data.frame(lapply(multilong_sub, as.factor))
+
+
+# Convert columns to the right types
+df$Duration_sec <- as.numeric(as.character(df$Duration_sec))
+df$HandDur <- as.numeric(as.character(df$HandDur))
+
+# 1. Bin the numeric variables
+
+# Binning based on quartiles
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"), 
+                           include.lowest = TRUE)
+
+df$HandDur_bin <- cut(df$HandDur, 
+                      breaks = quantile(df$HandDur, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                      labels = c("Very Short Hand Gesture", "Short Hand Gesture", "Medium Hand Gesture", "Long Hand Gesture"), 
+                      include.lowest = TRUE)
+
+# 2. Melt the data
+
+df_long <- df %>% 
+  mutate(id = row_number()) %>%
+  pivot_longer(cols = c(Voc_Code...6, Duration_sec_bin, HandDur_bin), 
+               names_to = "variable", 
+               values_to = "value")
+
+# 3. Generate the Network
+
+# Create pairwise edges for each row
+edges <- df_long %>%
+  inner_join(df_long, by = "id") %>%
+  filter(value.x != value.y) %>%
+  select(source = value.x, target = value.y)
+
+g <- graph_from_data_frame(edges, directed = FALSE) %>%
+  simplify()  # Merge duplicate edges
+
+plot(g, vertex.size = 15, vertex.label.cex = 0.7)
+
+
+
+#PLAYING AROUND W EDGE WIDTH AND COLORS###############
+
+
+# Binning based on quartiles
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"), 
+                           include.lowest = TRUE)
+
+df$HandDur_bin <- cut(df$HandDur, 
+                      breaks = quantile(df$HandDur, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                      labels = c("Very Short Hand Gesture", "Short Hand Gesture", "Medium Hand Gesture", "Long Hand Gesture"), 
+                      include.lowest = TRUE)
+# 2. Transform the data
+
+df_long <- df %>% 
+  mutate(id = row_number()) %>%
+  pivot_longer(cols = c(Voc_Code...6, Duration_sec_bin, HandDur_bin), 
+               names_to = "variable", 
+               values_to = "value")
+
+# 3. Generate the edges with weights
+
+edges <- df_long %>%
+  inner_join(df_long, by = "id") %>%
+  filter(value.x != value.y) %>%
+  select(source = value.x, target = value.y)
+
+# Compute edge weights (counts)
+edge_weights <- edges %>% 
+  group_by(source, target) %>% 
+  summarize(weight = n()) %>% 
+  ungroup()
+
+# 4. Construct the graph
+
+g <- graph_from_data_frame(edge_weights, directed = FALSE)
+
+# 5. Plot the graph
+
+# Define node colors based on their type
+V(g)$color <- ifelse(grepl("Very Short|Short|Medium|Long", V(g)$name) & grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Very Short|Short|Medium|Long", V(g)$name) & grepl("Hand Gesture", V(g)$name), "blue",
+                            "green"))
+
+# Use the Fruchterman-Reingold layout
+layout <- layout_with_fr(g)
+
+# Plot with custom node colors and edge widths based on weights
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$weight / max(E(g)$weight) * 5,  # Normalize and scale edge widths
+     edge.alpha = 0.5,  # Makes edges slightly transparent
+     main = "Vocal Code, Vocalization Duration, Hand Gesture")
+
+
+####################################################################################################
+
+
+####################################################################################################
+
+
+
+###########################lets do it with vocal code 1 and we're gonna create some velocities here.########################## 
+
+#let's create the variable for change in velocity before vocalization (during-prior)
+
+multilong$changebefore <- multilong$HandDur - multilong$HandPre1500
+
+#lets create variable for change in velocity during vocalization (post-during)
+
+multilong$changeduringpost <- multilong$HandPost - multilong$HandDur 
+
+##lets create variable for change in velocity overall:
+
+multilong$changeoverall <- multilong$HandPost - multilong$HandPre1500
+
+#lets filter vocal code 1: 
+multilong_code1 <- multilong[multilong$Voc_Code...6 == 1, c("changebefore", "changeduringpost", "changeoverall", "Duration_sec")]
+
+                                                                
+#turn into factor
+df <- data.frame(lapply(multilong_code1, as.factor))
+
+
+# Convert columns to the right types
+df$changebefore <- as.numeric(as.character(df$changebefore))
+df$changeduringpost <- as.numeric(as.character(df$changeduringpost))
+df$changeoverall <- as.numeric(as.character(df$changeoverall))
+df$Duration_sec <- as.numeric(as.character(df$Duration_sec))
+
+# 1. Binning the `Duration_sec` column
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"),
+                           include.lowest = TRUE)
+
+df$Duration_sec_bin <- as.numeric(df$Duration_sec_bin)
+
+# Binning the other three columns
+df$changebefore_bin <- cut(df$changebefore, 
+                           breaks = quantile(df$changebefore, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before"),
+                           include.lowest = TRUE)
+df$changebefore_bin <- as.numeric(df$changebefore_bin)
+
+
+df$changeduringpost_bin <- cut(df$changeduringpost, 
+                               breaks = quantile(df$changeduringpost, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                               labels = c("Low Change During", "Moderate Change During", "High Change During", "Very High Change During"),
+                               include.lowest = TRUE)
+
+df$changeduringpost_bin <- as.numeric(df$changeduringpost_bin)
+
+df$changeoverall_bin <- cut(df$changeoverall, 
+                            breaks = quantile(df$changeoverall, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                            labels = c("Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"),
+                            include.lowest = TRUE)
+
+df$changeoverall_bin <- as.numeric(df$changeoverall_bin)
+
+
+# 2. Remove rows with any NAs and generate pairs
+df <- df[complete.cases(df[, c("Duration_sec_bin", "changebefore_bin", "changeduringpost_bin", "changeoverall_bin")]), ]
+
+# Calculate the correlation matrix
+cor_matrix <- cor(df, use = "complete.obs", method = "spearman")
+
+# Create an empty graph with 16 nodes
+g <- graph.empty(n = 16, directed = FALSE)
+
+# Remove self-loops, if any
+g <- simplify(g, remove.multiple = FALSE, remove.loops = TRUE)
+
+# Name the vertices
+V(g)$name <- c(
+  "Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization",
+  "Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before",
+  "Low Change During", "Moderate Change During", "High Change During", "Very High Change During",
+  "Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"
+)
+
+# Iterate through the correlation matrix and add edges for significant correlations
+for (i in 1:(nrow(cor_matrix)-1)) {
+  for (j in (i+1):ncol(cor_matrix)) {
+    # Adjust the threshold as needed, e.g., if you want to include weaker correlations
+    if (abs(cor_matrix[i, j]) > 0.1) {
+      g <- g + edge(V(g)[i], V(g)[j])
+      # Set weight for the edge just added
+      edge_attr(g, "weight", index = E(g)[length(E(g))]) <- cor_matrix[i, j]
+    }
+  }
+}
+# Assign colors to nodes based on the variable type
+V(g)$color <- ifelse(grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Before", V(g)$name), "blue",
+                            ifelse(grepl("During", V(g)$name), "green",
+                                   "yellow")))
+
+
+# Adjust edge attributes for visualization based on correlation values
+E(g)$color <- ifelse(E(g)$weight >= 0, "black", "grey")
+E(g)$weight_for_layout <- E(g)$weight^2  # Square the weights for layout
+E(g)$width <- abs(scale(E(g)$weight)) * 2 + 1
+
+# Use Fruchterman-Reingold layout with squared weights
+layout <- layout_with_fr(g, weights = E(g)$weight_for_layout)
+
+# Plotting the graph
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$width,
+     edge.color = E(g)$color,
+     bg = "white",  # Ensuring the background color is set to white
+     main = "Network of Binned Variables within Vocal Code 1 based on Correlation")
+
+
+###################edge weights; 
+
+edge_weights <- E(g)$weight
+
+# Print extracted edge weights
+print(edge_weights)
+
+#Get the names of the vertices connected by each edge
+edge_names <- lapply(E(g), function(e) {
+  c(get.vertex.attribute(g, "name", V(g)[ends(g, e)[1]]),
+    get.vertex.attribute(g, "name", V(g)[ends(g, e)[2]]))
+})
+
+# Combine edge names and weights
+edges_and_weights <- data.frame(
+  from = sapply(edge_names, "[", 1),
+  to = sapply(edge_names, "[", 2),
+  weight = edge_weights
+)
+
+# Print result
+print(edges_and_weights)
+
+
+
+
+####################################CO-OCCURENCE##########################################################
+
+# 1. Binning the `Duration_sec` column
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"),
+                           include.lowest = TRUE)
+
+df$Duration_sec_bin <- as.numeric(df$Duration_sec_bin)
+
+# Binning the other three columns
+df$changebefore_bin <- cut(df$changebefore, 
+                           breaks = quantile(df$changebefore, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before"),
+                           include.lowest = TRUE)
+df$changebefore_bin <- as.numeric(df$changebefore_bin)
+
+
+df$changeduringpost_bin <- cut(df$changeduringpost, 
+                               breaks = quantile(df$changeduringpost, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                               labels = c("Low Change During", "Moderate Change During", "High Change During", "Very High Change During"),
+                               include.lowest = TRUE)
+
+df$changeduringpost_bin <- as.numeric(df$changeduringpost_bin)
+
+df$changeoverall_bin <- cut(df$changeoverall, 
+                            breaks = quantile(df$changeoverall, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                            labels = c("Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"),
+                            include.lowest = TRUE)
+
+df$changeoverall_bin <- as.numeric(df$changeoverall_bin)
+
+
+# 2. Remove rows with any NAs and generate pairs
+df <- df[complete.cases(df[, c("Duration_sec_bin", "changebefore_bin", "changeduringpost_bin", "changeoverall_bin")]), ]
+
+
+# Convert binned variables into dummy variables
+df_dummies <- df %>% 
+  mutate(
+    `Very Short Vocalization` = as.integer(Duration_sec_bin == 1),
+    `Short Vocalization` = as.integer(Duration_sec_bin == 2),
+    `Medium Vocalization` = as.integer(Duration_sec_bin == 3),
+    `Long Vocalization` = as.integer(Duration_sec_bin == 4),
+    `Low Change Before` = as.integer(changebefore_bin == 1),
+    `Moderate Change Before` = as.integer(changebefore_bin == 2),
+    `High Change Before` = as.integer(changebefore_bin == 3),
+    `Very High Change Before` = as.integer(changebefore_bin == 4),
+    `Low Change During` = as.integer(changeduringpost_bin == 1),
+    `Moderate Change During` = as.integer(changeduringpost_bin == 2),
+    `High Change During` = as.integer(changeduringpost_bin == 3),
+    `Very High Change During` = as.integer(changeduringpost_bin == 4),
+    `Low Change Overall` = as.integer(changeoverall_bin == 1),
+    `Moderate Change Overall` = as.integer(changeoverall_bin == 2),
+    `High Change Overall` = as.integer(changeoverall_bin == 3),
+    `Very High Change Overall` = as.integer(changeoverall_bin == 4)
+  ) 
+
+#Subset to only dummy variables
+df_dummies <- df_dummies[, grep("Vocalization|Change", names(df_dummies))]
+
+# Generate a matrix of co-occurrences for each row
+cooccurrence_matrix <- t(as.matrix(df_dummies)) %*% as.matrix(df_dummies)
+
+# Convert the matrix to a graph
+g <- graph_from_adjacency_matrix(cooccurrence_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
+
+# Remove self-loops, if any
+g <- simplify(g, remove.multiple = FALSE, remove.loops = TRUE)
+
+# Assign colors to nodes based on the variable type
+V(g)$color <- ifelse(grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Before", V(g)$name), "blue",
+                            ifelse(grepl("During", V(g)$name), "green",
+                                   "yellow")))
+
+# Use the raw weight for determining edge colors and widths
+# The weight is based on co-occurrence counts and will be non-negative
+
+# Color edges based on sign of weight: red for negative, green for positive.
+# Since co-occurrence is non-negative, all edges will be green in this case.
+E(g)$color <- "grey"
+
+# Set edge width based on the magnitude of weight.
+# Scaled based on weights, multiplied for visibility, and added a base width
+E(g)$width <- abs(scale(E(g)$weight)) * 2 + 1 
+
+# Use Fruchterman-Reingold layout
+layout <- layout_with_fr(g)
+
+# Plotting the graph
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$width,
+     edge.color = E(g)$color,
+     bg = "white",  # Ensuring the background color is set to white
+     main = "Network of Co-Occurence for Vocal Code 1 Variables")
+
+
+###################edge weights; 
+
+edge_weights <- E(g)$weight
+
+# Print extracted edge weights
+print(edge_weights)
+
+#Get the names of the vertices connected by each edge
+edge_names <- lapply(E(g), function(e) {
+  c(get.vertex.attribute(g, "name", V(g)[ends(g, e)[1]]),
+    get.vertex.attribute(g, "name", V(g)[ends(g, e)[2]]))
+})
+
+# Combine edge names and weights
+edges_and_weights <- data.frame(
+  from = sapply(edge_names, "[", 1),
+  to = sapply(edge_names, "[", 2),
+  weight = edge_weights
+)
+
+# Print result
+print(edges_and_weights)
+
+
+
+
+
+
+
+
+####################################################################################################
+
+####################################################################################################
+
+#############now lets do it for vocal code 2#####################
+
+
+#lets filter vocal code 2: 
+multilong_code2 <- multilong[multilong$Voc_Code...6 == 2, c("changebefore", "changeduringpost", "changeoverall", "Duration_sec")]
+
+
+#turn into factor
+df <- data.frame(lapply(multilong_code2, as.factor))
+
+
+# Convert columns to the right types
+df$changebefore <- as.numeric(as.character(df$changebefore))
+df$changeduringpost <- as.numeric(as.character(df$changeduringpost))
+df$changeoverall <- as.numeric(as.character(df$changeoverall))
+df$Duration_sec <- as.numeric(as.character(df$Duration_sec))
+
+# 1. Binning the `Duration_sec` column
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"),
+                           include.lowest = TRUE)
+
+df$Duration_sec_bin <- as.numeric(df$Duration_sec_bin)
+
+# Binning the other three columns
+df$changebefore_bin <- cut(df$changebefore, 
+                           breaks = quantile(df$changebefore, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before"),
+                           include.lowest = TRUE)
+df$changebefore_bin <- as.numeric(df$changebefore_bin)
+
+
+df$changeduringpost_bin <- cut(df$changeduringpost, 
+                               breaks = quantile(df$changeduringpost, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                               labels = c("Low Change During", "Moderate Change During", "High Change During", "Very High Change During"),
+                               include.lowest = TRUE)
+
+df$changeduringpost_bin <- as.numeric(df$changeduringpost_bin)
+
+df$changeoverall_bin <- cut(df$changeoverall, 
+                            breaks = quantile(df$changeoverall, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                            labels = c("Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"),
+                            include.lowest = TRUE)
+
+df$changeoverall_bin <- as.numeric(df$changeoverall_bin)
+
+
+# 2. Remove rows with any NAs and generate pairs
+df <- df[complete.cases(df[, c("Duration_sec_bin", "changebefore_bin", "changeduringpost_bin", "changeoverall_bin")]), ]
+
+# Calculate the correlation matrix
+cor_matrix <- cor(df, use = "complete.obs", method = "spearman")
+
+# Create an empty graph with 16 nodes
+g <- graph.empty(n = 16, directed = FALSE)
+
+# Remove self-loops, if any
+g <- simplify(g, remove.multiple = FALSE, remove.loops = TRUE)
+
+# Name the vertices
+V(g)$name <- c(
+  "Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization",
+  "Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before",
+  "Low Change During", "Moderate Change During", "High Change During", "Very High Change During",
+  "Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"
+)
+
+# Iterate through the correlation matrix and add edges for significant correlations
+for (i in 1:(nrow(cor_matrix)-1)) {
+  for (j in (i+1):ncol(cor_matrix)) {
+    # Adjust the threshold as needed, e.g., if you want to include weaker correlations
+    if (abs(cor_matrix[i, j]) > 0.1) {
+      g <- g + edge(V(g)[i], V(g)[j])
+      # Set weight for the edge just added
+      edge_attr(g, "weight", index = E(g)[length(E(g))]) <- cor_matrix[i, j]
+    }
+  }
+}
+# Assign colors to nodes based on the variable type
+V(g)$color <- ifelse(grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Before", V(g)$name), "blue",
+                            ifelse(grepl("During", V(g)$name), "green",
+                                   "yellow")))
+
+
+# Adjust edge attributes for visualization based on correlation values
+E(g)$color <- ifelse(E(g)$weight >= 0, "black", "grey")
+E(g)$weight_for_layout <- E(g)$weight^2  # Square the weights for layout
+E(g)$width <- abs(scale(E(g)$weight)) * 2 + 1
+
+# Use Fruchterman-Reingold layout with squared weights
+layout <- layout_with_fr(g, weights = E(g)$weight_for_layout)
+
+# Plotting the graph
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$width,
+     edge.color = E(g)$color,
+     bg = "white",  # Ensuring the background color is set to white
+     main = "Network of Binned Variables within Vocal Code 2 based on Correlation")
+
+
+###################edge weights; 
+
+edge_weights <- E(g)$weight
+
+# Print extracted edge weights
+print(edge_weights)
+
+#Get the names of the vertices connected by each edge
+edge_names <- lapply(E(g), function(e) {
+  c(get.vertex.attribute(g, "name", V(g)[ends(g, e)[1]]),
+    get.vertex.attribute(g, "name", V(g)[ends(g, e)[2]]))
+})
+
+# Combine edge names and weights
+edges_and_weights <- data.frame(
+  from = sapply(edge_names, "[", 1),
+  to = sapply(edge_names, "[", 2),
+  weight = edge_weights
+)
+
+# Print result
+print(edges_and_weights)
+
+
+
+
+
+
+####################################CO-OCCURENCE##########################################################
+
+# 1. Binning the `Duration_sec` column
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"),
+                           include.lowest = TRUE)
+
+df$Duration_sec_bin <- as.numeric(df$Duration_sec_bin)
+
+# Binning the other three columns
+df$changebefore_bin <- cut(df$changebefore, 
+                           breaks = quantile(df$changebefore, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before"),
+                           include.lowest = TRUE)
+df$changebefore_bin <- as.numeric(df$changebefore_bin)
+
+
+df$changeduringpost_bin <- cut(df$changeduringpost, 
+                               breaks = quantile(df$changeduringpost, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                               labels = c("Low Change During", "Moderate Change During", "High Change During", "Very High Change During"),
+                               include.lowest = TRUE)
+
+df$changeduringpost_bin <- as.numeric(df$changeduringpost_bin)
+
+df$changeoverall_bin <- cut(df$changeoverall, 
+                            breaks = quantile(df$changeoverall, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                            labels = c("Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"),
+                            include.lowest = TRUE)
+
+df$changeoverall_bin <- as.numeric(df$changeoverall_bin)
+
+
+# 2. Remove rows with any NAs and generate pairs
+df <- df[complete.cases(df[, c("Duration_sec_bin", "changebefore_bin", "changeduringpost_bin", "changeoverall_bin")]), ]
+
+
+# Convert binned variables into dummy variables
+df_dummies <- df %>% 
+  mutate(
+    `Very Short Vocalization` = as.integer(Duration_sec_bin == 1),
+    `Short Vocalization` = as.integer(Duration_sec_bin == 2),
+    `Medium Vocalization` = as.integer(Duration_sec_bin == 3),
+    `Long Vocalization` = as.integer(Duration_sec_bin == 4),
+    `Low Change Before` = as.integer(changebefore_bin == 1),
+    `Moderate Change Before` = as.integer(changebefore_bin == 2),
+    `High Change Before` = as.integer(changebefore_bin == 3),
+    `Very High Change Before` = as.integer(changebefore_bin == 4),
+    `Low Change During` = as.integer(changeduringpost_bin == 1),
+    `Moderate Change During` = as.integer(changeduringpost_bin == 2),
+    `High Change During` = as.integer(changeduringpost_bin == 3),
+    `Very High Change During` = as.integer(changeduringpost_bin == 4),
+    `Low Change Overall` = as.integer(changeoverall_bin == 1),
+    `Moderate Change Overall` = as.integer(changeoverall_bin == 2),
+    `High Change Overall` = as.integer(changeoverall_bin == 3),
+    `Very High Change Overall` = as.integer(changeoverall_bin == 4)
+  ) 
+
+#Subset to only dummy variables
+df_dummies <- df_dummies[, grep("Vocalization|Change", names(df_dummies))]
+
+# Generate a matrix of co-occurrences for each row
+cooccurrence_matrix <- t(as.matrix(df_dummies)) %*% as.matrix(df_dummies)
+
+# Convert the matrix to a graph
+g <- graph_from_adjacency_matrix(cooccurrence_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
+
+# Remove self-loops, if any
+g <- simplify(g, remove.multiple = FALSE, remove.loops = TRUE)
+
+# Assign colors to nodes based on the variable type
+V(g)$color <- ifelse(grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Before", V(g)$name), "blue",
+                            ifelse(grepl("During", V(g)$name), "green",
+                                   "yellow")))
+
+# Use the raw weight for determining edge colors and widths
+# The weight is based on co-occurrence counts and will be non-negative
+
+# Color edges based on sign of weight: red for negative, green for positive.
+# Since co-occurrence is non-negative, all edges will be green in this case.
+E(g)$color <- "grey"
+
+# Set edge width based on the magnitude of weight.
+# Scaled based on weights, multiplied for visibility, and added a base width
+E(g)$width <- abs(scale(E(g)$weight)) * 2 + 1 
+
+# Use Fruchterman-Reingold layout
+layout <- layout_with_fr(g)
+
+# Plotting the graph
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$width,
+     edge.color = E(g)$color,
+     bg = "white",  # Ensuring the background color is set to white
+     main = "Network of Co-Occurence for Vocal Code 2 Variables")
+
+
+###################edge weights; 
+
+edge_weights <- E(g)$weight
+
+# Print extracted edge weights
+print(edge_weights)
+
+#Get the names of the vertices connected by each edge
+edge_names <- lapply(E(g), function(e) {
+  c(get.vertex.attribute(g, "name", V(g)[ends(g, e)[1]]),
+    get.vertex.attribute(g, "name", V(g)[ends(g, e)[2]]))
+})
+
+# Combine edge names and weights
+edges_and_weights <- data.frame(
+  from = sapply(edge_names, "[", 1),
+  to = sapply(edge_names, "[", 2),
+  weight = edge_weights
+)
+
+# Print result
+print(edges_and_weights)
+
+
+
+
+
+
+####################################################################################################
+
+####################################################################################################
+
+########################vocal code 3####################################
+
+
+
+#lets filter vocal code 3: 
+multilong_code3 <- multilong[multilong$Voc_Code...6 == 3, c("changebefore", "changeduringpost", "changeoverall", "Duration_sec")]
+
+
+#turn into factor
+df <- data.frame(lapply(multilong_code3, as.factor))
+
+
+# Convert columns to the right types
+df$changebefore <- as.numeric(as.character(df$changebefore))
+df$changeduringpost <- as.numeric(as.character(df$changeduringpost))
+df$changeoverall <- as.numeric(as.character(df$changeoverall))
+df$Duration_sec <- as.numeric(as.character(df$Duration_sec))
+
+# 1. Binning the `Duration_sec` column
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"),
+                           include.lowest = TRUE)
+
+df$Duration_sec_bin <- as.numeric(df$Duration_sec_bin)
+
+# Binning the other three columns
+df$changebefore_bin <- cut(df$changebefore, 
+                           breaks = quantile(df$changebefore, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before"),
+                           include.lowest = TRUE)
+df$changebefore_bin <- as.numeric(df$changebefore_bin)
+
+
+df$changeduringpost_bin <- cut(df$changeduringpost, 
+                               breaks = quantile(df$changeduringpost, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                               labels = c("Low Change During", "Moderate Change During", "High Change During", "Very High Change During"),
+                               include.lowest = TRUE)
+
+df$changeduringpost_bin <- as.numeric(df$changeduringpost_bin)
+
+df$changeoverall_bin <- cut(df$changeoverall, 
+                            breaks = quantile(df$changeoverall, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                            labels = c("Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"),
+                            include.lowest = TRUE)
+
+df$changeoverall_bin <- as.numeric(df$changeoverall_bin)
+
+
+# 2. Remove rows with any NAs and generate pairs
+df <- df[complete.cases(df[, c("Duration_sec_bin", "changebefore_bin", "changeduringpost_bin", "changeoverall_bin")]), ]
+
+# Calculate the correlation matrix
+cor_matrix <- cor(df, use = "complete.obs", method = "spearman")
+
+# Create an empty graph with 16 nodes
+g <- graph.empty(n = 16, directed = FALSE)
+
+# Remove self-loops, if any
+g <- simplify(g, remove.multiple = FALSE, remove.loops = TRUE)
+
+# Name the vertices
+V(g)$name <- c(
+  "Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization",
+  "Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before",
+  "Low Change During", "Moderate Change During", "High Change During", "Very High Change During",
+  "Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"
+)
+
+# Iterate through the correlation matrix and add edges for significant correlations
+for (i in 1:(nrow(cor_matrix)-1)) {
+  for (j in (i+1):ncol(cor_matrix)) {
+    # Adjust the threshold as needed, e.g., if you want to include weaker correlations
+    if (abs(cor_matrix[i, j]) > 0.1) {
+      g <- g + edge(V(g)[i], V(g)[j])
+      # Set weight for the edge just added
+      edge_attr(g, "weight", index = E(g)[length(E(g))]) <- cor_matrix[i, j]
+    }
+  }
+}
+# Assign colors to nodes based on the variable type
+V(g)$color <- ifelse(grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Before", V(g)$name), "blue",
+                            ifelse(grepl("During", V(g)$name), "green",
+                                   "yellow")))
+
+
+# Adjust edge attributes for visualization based on correlation values
+E(g)$color <- ifelse(E(g)$weight >= 0, "black", "grey")
+E(g)$weight_for_layout <- E(g)$weight^2  # Square the weights for layout
+E(g)$width <- abs(scale(E(g)$weight)) * 2 + 1
+
+# Use Fruchterman-Reingold layout with squared weights
+layout <- layout_with_fr(g, weights = E(g)$weight_for_layout)
+
+# Plotting the graph
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$width,
+     edge.color = E(g)$color,
+     bg = "white",  # Ensuring the background color is set to white
+     main = "Network of Binned Variables within Vocal Code 3 based on Correlation")
+
+
+
+###################edge weights; 
+
+edge_weights <- E(g)$weight
+
+# Print extracted edge weights
+print(edge_weights)
+
+#Get the names of the vertices connected by each edge
+edge_names <- lapply(E(g), function(e) {
+  c(get.vertex.attribute(g, "name", V(g)[ends(g, e)[1]]),
+    get.vertex.attribute(g, "name", V(g)[ends(g, e)[2]]))
+})
+
+# Combine edge names and weights
+edges_and_weights <- data.frame(
+  from = sapply(edge_names, "[", 1),
+  to = sapply(edge_names, "[", 2),
+  weight = edge_weights
+)
+
+# Print result
+print(edges_and_weights)
+
+
+
+
+
+
+
+
+
+####################################CO-OCCURENCE##########################################################
+
+# 1. Binning the `Duration_sec` column
+df$Duration_sec_bin <- cut(df$Duration_sec, 
+                           breaks = quantile(df$Duration_sec, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Very Short Vocalization", "Short Vocalization", "Medium Vocalization", "Long Vocalization"),
+                           include.lowest = TRUE)
+
+df$Duration_sec_bin <- as.numeric(df$Duration_sec_bin)
+
+# Binning the other three columns
+df$changebefore_bin <- cut(df$changebefore, 
+                           breaks = quantile(df$changebefore, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                           labels = c("Low Change Before", "Moderate Change Before", "High Change Before", "Very High Change Before"),
+                           include.lowest = TRUE)
+df$changebefore_bin <- as.numeric(df$changebefore_bin)
+
+
+df$changeduringpost_bin <- cut(df$changeduringpost, 
+                               breaks = quantile(df$changeduringpost, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                               labels = c("Low Change During", "Moderate Change During", "High Change During", "Very High Change During"),
+                               include.lowest = TRUE)
+
+df$changeduringpost_bin <- as.numeric(df$changeduringpost_bin)
+
+df$changeoverall_bin <- cut(df$changeoverall, 
+                            breaks = quantile(df$changeoverall, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE), 
+                            labels = c("Low Change Overall", "Moderate Change Overall", "High Change Overall", "Very High Change Overall"),
+                            include.lowest = TRUE)
+
+df$changeoverall_bin <- as.numeric(df$changeoverall_bin)
+
+
+# 2. Remove rows with any NAs and generate pairs
+df <- df[complete.cases(df[, c("Duration_sec_bin", "changebefore_bin", "changeduringpost_bin", "changeoverall_bin")]), ]
+
+
+# Convert binned variables into dummy variables
+df_dummies <- df %>% 
+  mutate(
+    `Very Short Vocalization` = as.integer(Duration_sec_bin == 1),
+    `Short Vocalization` = as.integer(Duration_sec_bin == 2),
+    `Medium Vocalization` = as.integer(Duration_sec_bin == 3),
+    `Long Vocalization` = as.integer(Duration_sec_bin == 4),
+    `Low Change Before` = as.integer(changebefore_bin == 1),
+    `Moderate Change Before` = as.integer(changebefore_bin == 2),
+    `High Change Before` = as.integer(changebefore_bin == 3),
+    `Very High Change Before` = as.integer(changebefore_bin == 4),
+    `Low Change During` = as.integer(changeduringpost_bin == 1),
+    `Moderate Change During` = as.integer(changeduringpost_bin == 2),
+    `High Change During` = as.integer(changeduringpost_bin == 3),
+    `Very High Change During` = as.integer(changeduringpost_bin == 4),
+    `Low Change Overall` = as.integer(changeoverall_bin == 1),
+    `Moderate Change Overall` = as.integer(changeoverall_bin == 2),
+    `High Change Overall` = as.integer(changeoverall_bin == 3),
+    `Very High Change Overall` = as.integer(changeoverall_bin == 4)
+  ) 
+
+#Subset to only dummy variables
+df_dummies <- df_dummies[, grep("Vocalization|Change", names(df_dummies))]
+
+# Generate a matrix of co-occurrences for each row
+cooccurrence_matrix <- t(as.matrix(df_dummies)) %*% as.matrix(df_dummies)
+
+# Convert the matrix to a graph
+g <- graph_from_adjacency_matrix(cooccurrence_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
+
+# Remove self-loops, if any
+g <- simplify(g, remove.multiple = FALSE, remove.loops = TRUE)
+
+# Assign colors to nodes based on the variable type
+V(g)$color <- ifelse(grepl("Vocalization", V(g)$name), "red",
+                     ifelse(grepl("Before", V(g)$name), "blue",
+                            ifelse(grepl("During", V(g)$name), "green",
+                                   "yellow")))
+
+# Use the raw weight for determining edge colors and widths
+# The weight is based on co-occurrence counts and will be non-negative
+
+# Color edges based on sign of weight: red for negative, green for positive.
+# Since co-occurrence is non-negative, all edges will be green in this case.
+E(g)$color <- "grey"
+
+# Set edge width based on the magnitude of weight.
+# Scaled based on weights, multiplied for visibility, and added a base width
+E(g)$width <- abs(scale(E(g)$weight)) * 2 + 1 
+
+# Use Fruchterman-Reingold layout
+layout <- layout_with_fr(g)
+
+# Plotting the graph
+plot(g, 
+     layout = layout,
+     vertex.size = 15, 
+     vertex.label.cex = 0.7,
+     vertex.color = V(g)$color,
+     edge.width = E(g)$width,
+     edge.color = E(g)$color,
+     bg = "white",  # Ensuring the background color is set to white
+     main = "Network of Co-Occurence for Vocal Code 3 Variables")
+
+###################edge weights; 
+
+edge_weights <- E(g)$weight
+
+# Print extracted edge weights
+print(edge_weights)
+
+#Get the names of the vertices connected by each edge
+edge_names <- lapply(E(g), function(e) {
+  c(get.vertex.attribute(g, "name", V(g)[ends(g, e)[1]]),
+    get.vertex.attribute(g, "name", V(g)[ends(g, e)[2]]))
+})
+
+# Combine edge names and weights
+edges_and_weights <- data.frame(
+  from = sapply(edge_names, "[", 1),
+  to = sapply(edge_names, "[", 2),
+  weight = edge_weights
+)
+
+# Print result
+print(edges_and_weights)
