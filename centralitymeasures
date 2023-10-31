@@ -1,0 +1,161 @@
+library("dplyr")
+library("tidyverse")
+
+setwd("~/Desktop")
+multilong <- read_csv("finaldatasheet.csv")
+
+#get rid of blank columns:
+multilong <- multilong %>%
+  group_by(blank_row = (rowSums(multilong == "") == ncol(multilong))) %>%
+  mutate(blank_row_num = cumsum(blank_row)) %>%
+  filter(!((blank_row_num %% 2 == 1) & blank_row)) %>%
+  ungroup() %>%
+  select(-blank_row, -blank_row_num)
+
+########################
+#####################for all vocal codes##############
+
+#let's look at the variable for change in velocity before vocalization (during-prior)
+
+multilong$changebefore <- multilong$HandDur - multilong$HandPre1500
+multilong$changebefore <- as.numeric(as.character(multilong$changebefore))
+sd(multilong$changebefore, na.rm = TRUE) #41.66
+mean(multilong$changebefore, na.rm = TRUE) #4.053
+median(multilong$changebefore, na.rm = TRUE) #-1.27
+
+#lets look at the variable for change in velocity during vocalization (post-during)
+
+multilong$changeduringpost <- multilong$HandPost - multilong$HandDur 
+multilong$changeduringpost<- as.numeric(as.character(multilong$changeduringpost))
+sd(multilong$changeduringpost, na.rm = TRUE) #39.67
+mean(multilong$changeduringpost, na.rm = TRUE) #-5.20
+median(multilong$changeduringpost, na.rm = TRUE) #-0.65
+
+
+
+##lets look at the variable for change in velocity overall:
+
+multilong$changeoverall <- multilong$HandPost - multilong$HandPre1500
+multilong$changeoverall <- as.numeric(as.character(multilong$changeoverall))
+sd(multilong$changeoverall, na.rm = TRUE) #38.48
+mean(multilong$changeoverall, na.rm = TRUE) #-1.10
+median(multilong$changeoverall, na.rm = TRUE) #-0.62
+
+
+
+#####################################
+
+######vocal code 1##################
+
+
+#lets filter vocal code 1: 
+multilong_1 <- multilong[multilong$Voc_Code...6 == 1, c("changebefore", "changeduringpost", "changeoverall", "Duration_sec", "HandPre1500", "HandDur", 
+                                                      "HandPost")]
+
+# Convert columns to the right types
+
+
+#let's look at the variable for change in velocity before vocalization (during-prior)
+
+multilong_1$changebefore <- multilong_1$HandDur - multilong_1$HandPre1500
+multilong_1$changebefore <- as.numeric(as.character(multilong_1$changebefore))
+sd(multilong_1$changebefore, na.rm = TRUE) #33.70
+mean(multilong_1$changebefore, na.rm = TRUE) #-8.13
+median(multilong_1$changebefore, na.rm = TRUE) #-4.46
+
+#lets look at the variable for change in velocity during vocalization (post-during)
+
+multilong_1$changeduringpost <- multilong_1$HandPost - multilong_1$HandDur 
+multilong_1$changeduringpost<- as.numeric(as.character(multilong_1$changeduringpost))
+sd(multilong_1$changeduringpost, na.rm = TRUE) #33.54
+mean(multilong_1$changeduringpost, na.rm = TRUE) #-2.38
+median(multilong_1$changeduringpost, na.rm = TRUE) #0.76
+
+
+
+##lets look at the variable for change in velocity overall:
+
+multilong_1$changeoverall <- multilong_1$HandPost - multilong_1$HandPre1500
+multilong_1$changeoverall <- as.numeric(as.character(multilong_1$changeoverall))
+sd(multilong_1$changeoverall, na.rm = TRUE) #35.96
+mean(multilong_1$changeoverall, na.rm = TRUE) #-10.56
+median(multilong_1$changeoverall, na.rm = TRUE) #-5.36424
+
+#####################################
+
+######vocal code 2##################
+
+
+#lets filter vocal code 2: 
+multilong_2 <- multilong[multilong$Voc_Code...6 == 2, c("changebefore", "changeduringpost", "changeoverall", "Duration_sec", "HandPre1500", "HandDur", 
+                                                        "HandPost")]
+
+# Convert columns to the right types
+
+
+#let's look at the variable for change in velocity before vocalization (during-prior)
+
+multilong_2$changebefore <- multilong_2$HandDur - multilong_2$HandPre1500
+multilong_2$changebefore <- as.numeric(as.character(multilong_2$changebefore))
+sd(multilong_2$changebefore, na.rm = TRUE) #42.94
+mean(multilong_2$changebefore, na.rm = TRUE) #6.43
+median(multilong_2$changebefore, na.rm = TRUE) #-1.15
+
+#lets look at the variable for change in velocity during vocalization (post-during)
+
+multilong_2$changeduringpost <- multilong_2$HandPost - multilong_2$HandDur 
+multilong_2$changeduringpost<- as.numeric(as.character(multilong_2$changeduringpost))
+sd(multilong_2$changeduringpost, na.rm = TRUE) #40.74
+mean(multilong_2$changeduringpost, na.rm = TRUE) #-5.68
+median(multilong_2$changeduringpost, na.rm = TRUE) #-0.87
+
+
+
+##lets look at the variable for change in velocity overall:
+
+multilong_2$changeoverall <- multilong_2$HandPost - multilong_2$HandPre1500
+multilong_2$changeoverall <- as.numeric(as.character(multilong_2$changeoverall))
+sd(multilong_2$changeoverall, na.rm = TRUE) #39.28
+mean(multilong_2$changeoverall, na.rm = TRUE) #0.74
+median(multilong_2$changeoverall, na.rm = TRUE) #0.0017
+
+
+#####################################
+
+######vocal code 3##################
+
+#lets filter vocal code 3: 
+multilong_3 <- multilong[multilong$Voc_Code...6 == 3, c("changebefore", "changeduringpost", "changeoverall", "Duration_sec", "HandPre1500", "HandDur", 
+                                                        "HandPost")]
+
+# Convert columns to the right types
+
+
+#let's look at the variable for change in velocity before vocalization (during-prior)
+
+multilong_3$changebefore <- multilong_3$HandDur - multilong_3$HandPre1500
+multilong_3$changebefore <- as.numeric(as.character(multilong_3$changebefore))
+sd(multilong_3$changebefore, na.rm = TRUE) #42.41
+mean(multilong_3$changebefore, na.rm = TRUE) #6.95
+median(multilong_3$changebefore, na.rm = TRUE) #-0.20
+
+#lets look at the variable for change in velocity during vocalization (post-during)
+
+multilong_3$changeduringpost <- multilong_3$HandPost - multilong_3$HandDur 
+multilong_3$changeduringpost<- as.numeric(as.character(multilong_3$changeduringpost))
+sd(multilong_3$changeduringpost, na.rm = TRUE) #41.08
+mean(multilong_3$changeduringpost, na.rm = TRUE) #-5.98
+median(multilong_3$changeduringpost, na.rm = TRUE) #-1.41
+
+
+
+##lets look at the variable for change in velocity overall:
+
+multilong_3$changeoverall <- multilong_3$HandPost - multilong_3$HandPre1500
+multilong_3$changeoverall <- as.numeric(as.character(multilong_3$changeoverall))
+sd(multilong_3$changeoverall, na.rm = TRUE) #37.69
+mean(multilong_3$changeoverall, na.rm = TRUE) #1.10
+median(multilong_3$changeoverall, na.rm = TRUE) #0.88
+
+
+
